@@ -16,7 +16,12 @@
 
 $LOAD_PATH << File.dirname(__FILE__) + '/lib'
 
-require 'rubygems'
+begin
+  require 'rubygems'
+rescue LoadError
+  # Ignore.
+end
+
 require 'active_support'
 
 require 'rrd/graph'
