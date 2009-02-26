@@ -1,0 +1,133 @@
+#!/usr/bin/env ruby
+
+# Copyright © 2009 Johan Kiviniemi
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+$LOAD_PATH << File.dirname(__FILE__) + '/lib'
+
+require 'rubygems'
+require 'active_support'
+
+require 'rrd/graph'
+
+Dir.chdir File.dirname(__FILE__)
+
+root = "/var/lib/collectd/rrd"
+
+w = 1520
+h = 200
+line = 2
+
+period = 1.week.to_f
+
+E = RRD::Graph::Expr
+#RRD::Logger.instance.level = Logger::DEBUG
+
+RRD::Graph.new w, h, "HDD temperature", "img/hdd-temp.png", "°C", period do |g|
+  [
+    ["alku sda   ", "heh.fi/hddtemp/temperature-8-0.rrd:value:MAX"],
+    ["alku sdb   ", "heh.fi/hddtemp/temperature-8-16.rrd:value:MAX"],
+    ["luotain sda", "luotain/hddtemp/temperature-8-0.rrd:value:MAX"],
+  ].each do |label, path|
+    temp   = E.read "#{root}/#{path}"
+    smooth = temp.trend period/48.0
+
+    g.line   line, smooth, label
+    g.gprint temp
+  end
+end
+
+RRD::Graph.new w, h, "Free diskspace", "img/df.png", "B", period do |g|
+  [
+    ["alku /       ", "heh.fi/df/df-root.rrd:free:MIN"],
+    ["alku /home   ", "heh.fi/df/df-home.rrd:free:MIN"],
+    ["luotain /    ", "luotain/df/df-root.rrd:free:MIN"],
+  ].each do |label, path|
+    df = E.read "#{root}/#{path}"
+
+    g.line   line, df, label
+    g.gprint df
+  end
+end
+
+RRD::Graph.new w, h, "Free RAM", "img/mem.png", "B", period do |g|
+  [
+    ["alku   ", "heh.fi/memory/memory-%s.rrd:value:AVERAGE"],
+    ["luotain", "luotain/memory/memory-%s.rrd:value:AVERAGE"],
+  ].each do |label, path|
+    free     = E.read "#{root}/#{path % 'free'}"
+    cached   = E.read "#{root}/#{path % 'cached'}"
+    buffered = E.read "#{root}/#{path % 'buffered'}"
+
+    sum = free + cached + buffered
+
+    g.line   line, sum, label
+    g.gprint sum
+  end
+end
+
+RRD::Graph.new w, h, "CPU usage", "img/cpu.png", "%", period do |g|
+  [
+    ["alku   ", "heh.fi/cpu-0/cpu-idle.rrd:value:AVERAGE"],
+    ["luotain", "luotain/cpu-0/cpu-idle.rrd:value:AVERAGE"],
+  ].each do |label, path|
+    idle    = E.read "#{root}/#{path}"
+    working = E.new(100) - idle
+    smooth  = working.trend period/144.0
+
+    g.line   line, smooth, label
+    g.gprint working
+  end
+end
+
+RRD::Graph.new w, h, "Time offset", "img/time-offset.png", "s", period do |g|
+  [
+    ["alku – gw     ", "heh.fi/ntpd/time_offset-10.0.0.1.rrd:seconds:AVERAGE"],
+  ].each do |label, path|
+    offset = E.read "#{root}/#{path}"
+    smooth = offset.trend period/24.0
+    abs    = offset.ge(0).if_ offset, E.new(0)-offset
+
+    g.line   line, smooth, label
+    g.gprint abs
+  end
+end
+
+RRD::Graph.new w, h, "Latency", "img/latency.png", "s", period do |g|
+  [
+    ["alku – dslam", "heh.fi/ping/ping-83.145.237.254.rrd:ping:AVERAGE"],
+    ["alku – SONG ", "heh.fi/ping/ping-ntp1.tdc.fi.rrd:ping:AVERAGE"],
+  ].each do |label, path|
+    ms     = E.read "#{root}/#{path}"
+    s      = ms/1000
+    smooth = s.trend period/48.0
+
+    g.line   line, smooth, label
+    g.gprint s
+  end
+end
+
+RRD::Graph.new w, h, "Uptime", "img/uptime.png", "day", 1.year.to_f do |g|
+  [
+    ["alku   ", "heh.fi/exec-uptime/uptime.rrd:seconds:MAX"],
+    ["luotain", "luotain/exec-uptime/uptime.rrd:seconds:MAX"],
+  ].each do |label, path|
+    s    = E.read "#{root}/#{path}"
+    days = s/86400.0
+
+    g.line   line, days, label
+    g.gprint days
+  end
+end
+
